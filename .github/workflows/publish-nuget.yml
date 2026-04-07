@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -46,9 +48,16 @@ jobs:
           dotnet nuget push ".\ApngAsmWrapper\bin\Release\ApngAsmWrapper.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
           dotnet nuget push ".\ApngAsmWrapper.ImageSharp\bin\Release\ApngAsmWrapper.ImageSharp.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
 
+      - name: Generate changelog (git-cliff)
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag "${{ github.ref_name }}" --output CHANGELOG.md
+
       - name: Create GitHub Release (attach nupkg)
         uses: softprops/action-gh-release@v2
         with:
+          body_path: CHANGELOG.md
           files: |
             ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.nupkg
             ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.snupkg
