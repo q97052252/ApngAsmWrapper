@@ -124,6 +124,23 @@ public static partial class ApngGenerator
         public string? TempDirectoryRoot { get; init; }
 
         /// <summary>
+        /// If true, the temporary working directory (materialized frames + delay files) will NOT be deleted.
+        /// Useful for troubleshooting apngasm failures. Default false.
+        /// </summary>
+        public bool KeepTempFiles { get; init; } = false;
+
+        /// <summary>
+        /// If true, materialize frames concurrently (bounded by <see cref="MaxDegreeOfParallelism"/>). Default false.
+        /// </summary>
+        public bool MaterializeFramesInParallel { get; init; } = false;
+
+        /// <summary>
+        /// Max concurrency when <see cref="MaterializeFramesInParallel"/> is enabled.
+        /// Null = Environment.ProcessorCount. Minimum 1.
+        /// </summary>
+        public int? MaxDegreeOfParallelism { get; init; }
+
+        /// <summary>
         /// Extra raw CLI args appended at the end (extension point for future flags).
         /// </summary>
         public IReadOnlyList<string> ExtraArgs { get; init; } = Array.Empty<string>();
@@ -152,10 +169,15 @@ public static partial class ApngGenerator
         int? ExitCode,
         string? CommandLine,
         string? StandardOutput,
-        string? StandardError)
+        string? StandardError,
+        string? TempDirectory,
+        IReadOnlyList<string>? MaterializedFramePaths)
     {
-        public static Result Ok(string cmd, string stdout, string stderr) => new(true, null, 0, cmd, stdout, stderr);
-        public static Result Fail(string message, int? exit, string cmd, string stdout, string stderr) => new(false, message, exit, cmd, stdout, stderr);
+        public static Result Ok(string cmd, string stdout, string stderr, string? tempDir, IReadOnlyList<string>? materialized) =>
+            new(true, null, 0, cmd, stdout, stderr, tempDir, materialized);
+
+        public static Result Fail(string message, int? exit, string cmd, string stdout, string stderr, string? tempDir, IReadOnlyList<string>? materialized) =>
+            new(false, message, exit, cmd, stdout, stderr, tempDir, materialized);
     }
 
     /// <summary>Optional logging interface (implement to integrate with your logger).</summary>
@@ -228,8 +250,18 @@ public static partial class ApngGenerator
         public Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(_path))
+                throw new ArgumentException("Input path is empty.", nameof(_path));
+            if (!File.Exists(_path))
+                throw new FileNotFoundException("Input file not found.", _path);
+
             string target = Path.Combine(directory, fileNameWithoutExt + ".png");
-            File.Copy(_path, target, overwrite: true);
+            // If the source is already the exact target path, avoid redundant copy.
+            // This also helps performance for large frames when the caller already placed them into the temp folder.
+            string srcFull = Path.GetFullPath(_path);
+            string dstFull = Path.GetFullPath(target);
+            if (!string.Equals(srcFull, dstFull, StringComparison.OrdinalIgnoreCase))
+                File.Copy(_path, target, overwrite: true);
             return Task.FromResult(target);
         }
     }
@@ -286,9 +318,39 @@ public static partial class ApngGenerator
             return this;
         }
 
+        /// <summary>
+        /// Adds multiple frames from file paths.
+        /// </summary>
+        public Builder AddFrames(IEnumerable<string> imagePaths)
+        {
+            foreach (string p in imagePaths)
+                AddFrame(p);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds multiple frames with per-frame delays.
+        /// </summary>
+        public Builder AddFrames(IEnumerable<(string Path, int? DelayNum, int? DelayDen)> frames)
+        {
+            foreach (var f in frames)
+                AddFrame(f.Path, f.DelayNum, f.DelayDen);
+            return this;
+        }
+
         public Builder AddFrame(Stream pngStream, int? delayNum = null, int? delayDen = null)
         {
             _frames.Add(new Frame(new StreamFrameSource(pngStream)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
+            return this;
+        }
+
+        /// <summary>
+        /// Adds multiple frames from streams.
+        /// </summary>
+        public Builder AddFrames(IEnumerable<Stream> pngStreams)
+        {
+            foreach (Stream s in pngStreams)
+                AddFrame(s);
             return this;
         }
 
@@ -326,15 +388,15 @@ public static partial class ApngGenerator
     private static async Task<Result> GenerateInternalAsync(Request req, CancellationToken ct, IApngasmProcessRunner runner, IApngLogger logger)
     {
         if (string.IsNullOrWhiteSpace(req.ApngasmExePath) || !File.Exists(req.ApngasmExePath))
-            return Result.Fail("apngasm executable not found.", null, "", "", "");
+            return Result.Fail($"apngasm executable not found: '{req.ApngasmExePath}'.", null, "", "", "", null, null);
         if (string.IsNullOrWhiteSpace(req.OutputApngPath))
-            return Result.Fail("Output path is empty.", null, "", "", "");
+            return Result.Fail("Output path is empty.", null, "", "", "", null, null);
         if (req.Frames is null || req.Frames.Count == 0)
-            return Result.Fail("At least one frame is required.", null, "", "", "");
+            return Result.Fail("At least one frame is required.", null, "", "", "", null, null);
         if (req.Options.LoopCount < 0)
-            return Result.Fail("LoopCount must be >= 0.", null, "", "", "");
+            return Result.Fail("LoopCount must be >= 0.", null, "", "", "", null, null);
         if (req.Options.HorizontalStripFrames is not null && req.Options.VerticalStripFrames is not null)
-            return Result.Fail("Cannot use -hs and -vs together.", null, "", "", "");
+            return Result.Fail("Cannot use -hs and -vs together.", null, "", "", "", null, null);
 
         string tempRoot = string.IsNullOrWhiteSpace(req.Options.TempDirectoryRoot) ? Path.GetTempPath() : req.Options.TempDirectoryRoot!;
         string tmpDir = Path.Combine(tempRoot, "ApngGenerator", Guid.NewGuid().ToString("N"));
@@ -342,46 +404,77 @@ public static partial class ApngGenerator
 
         try
         {
-            var fileInputs = new List<string>(req.Frames.Count);
-            for (int i = 0; i < req.Frames.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                string fileName = $"frame{i:00}";
-                string path = await req.Frames[i].Source.MaterializePngAsync(tmpDir, fileName, ct);
-                fileInputs.Add(path);
+            string[] materialized = new string[req.Frames.Count];
 
-                int? num = req.Frames[i].DelayNumerator;
-                int? den = req.Frames[i].DelayDenominator;
-                if (num is not null || den is not null)
+            if (!req.Options.MaterializeFramesInParallel || req.Frames.Count <= 1)
+            {
+                for (int i = 0; i < req.Frames.Count; i++)
+                    materialized[i] = await MaterializeFrameAsync(req, tmpDir, i, ct);
+            }
+            else
+            {
+                int dop = req.Options.MaxDegreeOfParallelism.GetValueOrDefault(Environment.ProcessorCount);
+                if (dop < 1) dop = 1;
+                using SemaphoreSlim gate = new SemaphoreSlim(dop);
+
+                var tasks = new Task[req.Frames.Count];
+                for (int i = 0; i < req.Frames.Count; i++)
                 {
-                    if (num is null || den is null || num <= 0 || den <= 0)
-                        return Result.Fail("Per-frame delay requires positive numerator and denominator.", null, "", "", "");
-                    File.WriteAllText(Path.Combine(tmpDir, $"{fileName}.txt"), $"delay={num}/{den}", Encoding.ASCII);
+                    int idx = i;
+                    tasks[idx] = Task.Run(async () =>
+                    {
+                        await gate.WaitAsync(ct);
+                        try { materialized[idx] = await MaterializeFrameAsync(req, tmpDir, idx, ct); }
+                        finally { gate.Release(); }
+                    }, ct);
                 }
+                await Task.WhenAll(tasks);
             }
 
+            var fileInputs = (IReadOnlyList<string>)materialized;
             string args = BuildArgs(req.OutputApngPath, fileInputs, req.Options);
             string cmd = $"\"{req.ApngasmExePath}\" {args}";
             logger.Info(cmd);
 
             (int exit, string stdout, string stderr) = await runner.RunAsync(req.ApngasmExePath, args, tmpDir, ct);
             return exit == 0
-                ? Result.Ok(cmd, stdout, stderr)
-                : Result.Fail($"apngasm failed (exit={exit}).", exit, cmd, stdout, stderr);
+                ? Result.Ok(cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized)
+                : Result.Fail($"apngasm failed (exit={exit}).", exit, cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized);
         }
         catch (OperationCanceledException)
         {
-            return Result.Fail("Cancelled.", null, "", "", "");
+            return Result.Fail("Cancelled.", null, "", "", "", req.Options.KeepTempFiles ? tmpDir : null, null);
         }
         catch (Exception ex)
         {
             logger.Error(ex.ToString());
-            return Result.Fail(ex.ToString(), null, "", "", "");
+            return Result.Fail(ex.ToString(), null, "", "", "", req.Options.KeepTempFiles ? tmpDir : null, null);
         }
         finally
         {
-            try { Directory.Delete(tmpDir, recursive: true); } catch { }
+            if (!req.Options.KeepTempFiles)
+            {
+                try { Directory.Delete(tmpDir, recursive: true); } catch { }
+            }
         }
+    }
+
+    private static async Task<string> MaterializeFrameAsync(Request req, string tmpDir, int index, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        string fileName = $"frame{index:00}";
+        string path = await req.Frames[index].Source.MaterializePngAsync(tmpDir, fileName, ct);
+
+        int? num = req.Frames[index].DelayNumerator;
+        int? den = req.Frames[index].DelayDenominator;
+        if (num is not null || den is not null)
+        {
+            if (num is null || den is null || num <= 0 || den <= 0)
+                throw new ArgumentException("Per-frame delay requires positive numerator and denominator.");
+            File.WriteAllText(Path.Combine(tmpDir, $"{fileName}.txt"), $"delay={num}/{den}", Encoding.ASCII);
+        }
+
+        return path;
     }
 
     private static string BuildArgs(string outputPath, IReadOnlyList<string> inputPaths, Options opt)

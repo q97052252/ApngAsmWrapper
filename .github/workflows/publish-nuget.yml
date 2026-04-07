@@ -7,7 +7,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -26,7 +26,15 @@ jobs:
         run: dotnet restore .\ApngAsmWrapper\ApngAsmWrapper.csproj
 
       - name: Pack (Release)
-        run: dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -match '^v(?<ver>\d+\.\d+\.\d+)$') {
+            $ver = $Matches['ver']
+            dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore /p:Version=$ver
+          } else {
+            dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore
+          }
 
       - name: Push to NuGet
         env:
@@ -34,4 +42,11 @@ jobs:
         run: |
           if (-not $env:NUGET_API_KEY) { throw "Missing GitHub secret: NUGET_API_KEY" }
           dotnet nuget push ".\ApngAsmWrapper\bin\Release\ApngAsmWrapper.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+
+      - name: Create GitHub Release (attach nupkg)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.nupkg
+            ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.snupkg
 

@@ -62,6 +62,7 @@ public sealed class ApngGeneratorTests
             ApngGenerator.Result result = await ApngGenerator.GenerateAsync(req, runner: runner);
 
             Assert.IsTrue(result.Success);
+            Assert.IsNull(result.TempDirectory, "TempDirectory should be null when KeepTempFiles=false.");
             Assert.IsNotNull(runner.LastArgs);
             StringAssert.Contains(runner.LastArgs, "\""+outPath+"\"");
             // Inputs are copied into the generator temp folder with stable names (frame00.png, frame01.png, ...).
