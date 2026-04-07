@@ -5,6 +5,8 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 
 namespace ApngAsmWrapper;
 
@@ -122,6 +124,12 @@ public static partial class ApngGenerator
         /// Optional temp directory root. If null/empty, uses <see cref="Path.GetTempPath"/>.
         /// </summary>
         public string? TempDirectoryRoot { get; init; }
+
+        /// <summary>
+        /// If true, when a file-path frame input is not a PNG (e.g. jpg/bmp), it will be transcoded to PNG automatically.
+        /// If false, non-PNG file inputs will throw. Default true.
+        /// </summary>
+        public bool TranscodeNonPngInputs { get; init; } = true;
 
         /// <summary>
         /// If true, the temporary working directory (materialized frames + delay files) will NOT be deleted.
@@ -245,9 +253,15 @@ public static partial class ApngGenerator
     public sealed class FileFrameSource : IApngFrameSource
     {
         private readonly string _path;
-        public FileFrameSource(string path) => _path = path;
+        private readonly bool _transcodeNonPng;
 
-        public Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
+        public FileFrameSource(string path, bool transcodeNonPng = true)
+        {
+            _path = path;
+            _transcodeNonPng = transcodeNonPng;
+        }
+
+        public async Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(_path))
@@ -256,13 +270,29 @@ public static partial class ApngGenerator
                 throw new FileNotFoundException("Input file not found.", _path);
 
             string target = Path.Combine(directory, fileNameWithoutExt + ".png");
-            // If the source is already the exact target path, avoid redundant copy.
-            // This also helps performance for large frames when the caller already placed them into the temp folder.
             string srcFull = Path.GetFullPath(_path);
             string dstFull = Path.GetFullPath(target);
-            if (!string.Equals(srcFull, dstFull, StringComparison.OrdinalIgnoreCase))
-                File.Copy(_path, target, overwrite: true);
-            return Task.FromResult(target);
+
+            string ext = Path.GetExtension(_path);
+            bool isPng = string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase);
+
+            if (isPng)
+            {
+                // If the source is already the exact target path, avoid redundant copy.
+                if (!string.Equals(srcFull, dstFull, StringComparison.OrdinalIgnoreCase))
+                    File.Copy(_path, target, overwrite: true);
+                return target;
+            }
+
+            if (!_transcodeNonPng)
+                throw new NotSupportedException($"Non-PNG input is not allowed: '{_path}'. Enable TranscodeNonPngInputs to auto-convert.");
+
+            // Transcode common formats (jpg/bmp/gif/...) to PNG.
+            await using FileStream input = File.OpenRead(_path);
+            using Image image = await Image.LoadAsync(input, ct);
+            var encoder = new PngEncoder();
+            await image.SaveAsPngAsync(target, encoder, ct);
+            return target;
         }
     }
 
@@ -288,6 +318,7 @@ public static partial class ApngGenerator
     {
         private readonly List<Frame> _frames = new();
         private Options _options = new();
+        private bool _transcodeNonPngInputs = true;
         private readonly string _apngasmExePath;
         private readonly string _outputPath;
 
@@ -309,12 +340,23 @@ public static partial class ApngGenerator
         public Builder WithOptions(Options options)
         {
             _options = options;
+            _transcodeNonPngInputs = options.TranscodeNonPngInputs;
+            return this;
+        }
+
+        /// <summary>
+        /// Controls whether file-path inputs that are not PNG should be auto-transcoded to PNG.
+        /// This affects subsequent <see cref="AddFrame(string,int?,int?)"/> calls.
+        /// </summary>
+        public Builder WithFileInputTranscoding(bool enabled)
+        {
+            _transcodeNonPngInputs = enabled;
             return this;
         }
 
         public Builder AddFrame(string imagePath, int? delayNum = null, int? delayDen = null)
         {
-            _frames.Add(new Frame(new FileFrameSource(imagePath)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
+            _frames.Add(new Frame(new FileFrameSource(imagePath, _transcodeNonPngInputs)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
             return this;
         }
 

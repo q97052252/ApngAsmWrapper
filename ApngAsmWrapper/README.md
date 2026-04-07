@@ -137,7 +137,7 @@ When `Success=false`, check:
 常见原因 / Common causes:
 
 - **找不到 apngasm64.exe**：确认输出目录存在 `apngasm64.exe`，或设置 `APNGASM_EXE`
-- **输入不是 PNG**：当前 `FileFrameSource` 会直接复制为 `.png`，不做格式转换；请确保输入本身是 PNG（或自定义实现 `IApngFrameSource`）
+- **输入不是 PNG**：默认会自动把 `jpg/bmp/gif/...` 转成 PNG（可通过 `Options.TranscodeNonPngInputs=false` 关闭）
 
 ---
 

@@ -7,7 +7,7 @@
 
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>ApngAsmWrapper</PackageId>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <Authors>q97052252</Authors>
     <Description>High-level, reusable C# wrapper for apngasm (APNG Assembler) CLI. Supports multi-frame inputs, per-frame delays, loops, and common apngasm options.</Description>
     <PackageTags>apng;apngasm;png;animation;wrapper</PackageTags>
@@ -17,7 +17,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) 2026 q97052252</Copyright>
-    <PackageReleaseNotes>0.1.3: Add keep-temp option, batch frame APIs, optional parallel frame materialization, richer diagnostics, and improved file frame handling.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.1.4: Optional auto-transcode non-PNG inputs to PNG; expand unit tests for parallel materialization, keep-temp, and invalid inputs.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
@@ -45,12 +45,11 @@
     We reference the existing exe already present in the repo (no file copy needed).
   -->
   <ItemGroup>
-    <None Include="..\ImageGeneratorTool2\tools\apngasm\apngasm64.exe"
-          Pack="true"
-          PackagePath="tools\apngasm\" />
-    <None Include="buildTransitive\ApngAsmWrapper.targets"
-          Pack="true"
-          PackagePath="buildTransitive\" />
+    <None Include="..\ImageGeneratorTool2\tools\apngasm\apngasm64.exe" Pack="true" PackagePath="tools\apngasm\" />
+    <None Include="buildTransitive\ApngAsmWrapper.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
 </Project>
