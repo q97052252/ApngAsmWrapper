@@ -32,6 +32,9 @@ jobs:
       - name: Restore
         run: dotnet restore .\ImageGeneratorTool2.slnx
 
+      - name: Build (Release)
+        run: dotnet build .\ImageGeneratorTool2.slnx -c Release --no-restore
+
       - name: Verify tag is on main
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
