@@ -470,22 +470,21 @@ public static partial class ApngGenerator
 
         long ms = (long)Math.Round(delay.TotalMilliseconds);
         if (ms <= 0) ms = 1;
-        long num = ms;
-        long den = 1000;
-        long g = Gcd(num, den);
-        num /= g;
-        den /= g;
-
-        if (num > int.MaxValue || den > int.MaxValue)
-            throw new ArgumentOutOfRangeException(nameof(delay), "Delay is too large.");
-
-        return ((int)num, (int)den);
+        return ToApngDelayFractionFromMillisecondsCore(ms);
     }
 
     public static (int Numerator, int Denominator) ToApngDelayFractionFromMilliseconds(int delayMs)
     {
         // APNG delay is stored as two unsigned 16-bit integers (NUM/DEN seconds).
         // Keep values within 1..65535 to avoid encoder/decoder issues.
+        if (delayMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(delayMs), "Delay must be positive milliseconds.");
+
+        return ToApngDelayFractionFromMillisecondsCore(delayMs);
+    }
+
+    private static (int Numerator, int Denominator) ToApngDelayFractionFromMillisecondsCore(long delayMs)
+    {
         if (delayMs <= 0)
             throw new ArgumentOutOfRangeException(nameof(delayMs), "Delay must be positive milliseconds.");
 
@@ -499,6 +498,7 @@ public static partial class ApngGenerator
         if (num <= Max && den <= Max)
             return ((int)num, (int)den);
 
+        // Scale down both sides to fit, preserving ratio as closely as possible.
         long scaleA = (num + Max - 1) / Max;
         long scaleB = (den + Max - 1) / Max;
         long scale = Math.Max(scaleA, scaleB);
