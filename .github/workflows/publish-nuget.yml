@@ -23,7 +23,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore .\ApngAsmWrapper\ApngAsmWrapper.csproj
+        run: dotnet restore .\ImageGeneratorTool2.slnx
 
       - name: Pack (Release)
         shell: pwsh
@@ -32,8 +32,10 @@ jobs:
           if ($tag -match '^v(?<ver>\d+\.\d+\.\d+)$') {
             $ver = $Matches['ver']
             dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore /p:Version=$ver
+            dotnet pack .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj -c Release --no-restore /p:Version=$ver
           } else {
             dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore
+            dotnet pack .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj -c Release --no-restore
           }
 
       - name: Push to NuGet
@@ -42,6 +44,7 @@ jobs:
         run: |
           if (-not $env:NUGET_API_KEY) { throw "Missing GitHub secret: NUGET_API_KEY" }
           dotnet nuget push ".\ApngAsmWrapper\bin\Release\ApngAsmWrapper.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+          dotnet nuget push ".\ApngAsmWrapper.ImageSharp\bin\Release\ApngAsmWrapper.ImageSharp.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
 
       - name: Create GitHub Release (attach nupkg)
         uses: softprops/action-gh-release@v2
@@ -49,4 +52,6 @@ jobs:
           files: |
             ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.nupkg
             ApngAsmWrapper/bin/Release/ApngAsmWrapper.*.snupkg
+            ApngAsmWrapper.ImageSharp/bin/Release/ApngAsmWrapper.ImageSharp.*.nupkg
+            ApngAsmWrapper.ImageSharp/bin/Release/ApngAsmWrapper.ImageSharp.*.snupkg
 

@@ -5,8 +5,6 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
 
 namespace ApngAsmWrapper;
 
@@ -126,7 +124,8 @@ public static partial class ApngGenerator
         public string? TempDirectoryRoot { get; init; }
 
         /// <summary>
-        /// If true, when a file-path frame input is not a PNG (e.g. jpg/bmp), it will be transcoded to PNG automatically.
+        /// If true, when a file-path frame input is not a PNG (e.g. jpg/bmp), the generator will attempt to transcode it to PNG.
+        /// To actually transcode, you must provide a <see cref="IPngTranscoder"/> (e.g. from the optional ApngAsmWrapper.ImageSharp package).
         /// If false, non-PNG file inputs will throw. Default true.
         /// </summary>
         public bool TranscodeNonPngInputs { get; init; } = true;
@@ -249,16 +248,26 @@ public static partial class ApngGenerator
         Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct);
     }
 
+    /// <summary>
+    /// Optional transcoder interface to convert arbitrary image formats to PNG.
+    /// </summary>
+    public interface IPngTranscoder
+    {
+        Task TranscodeToPngAsync(string inputPath, string outputPngPath, CancellationToken ct);
+    }
+
     /// <summary>Frame source backed by a file path.</summary>
     public sealed class FileFrameSource : IApngFrameSource
     {
         private readonly string _path;
         private readonly bool _transcodeNonPng;
+        private readonly IPngTranscoder? _transcoder;
 
-        public FileFrameSource(string path, bool transcodeNonPng = true)
+        public FileFrameSource(string path, bool transcodeNonPng = true, IPngTranscoder? transcoder = null)
         {
             _path = path;
             _transcodeNonPng = transcodeNonPng;
+            _transcoder = transcoder;
         }
 
         public async Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
@@ -287,11 +296,10 @@ public static partial class ApngGenerator
             if (!_transcodeNonPng)
                 throw new NotSupportedException($"Non-PNG input is not allowed: '{_path}'. Enable TranscodeNonPngInputs to auto-convert.");
 
-            // Transcode common formats (jpg/bmp/gif/...) to PNG.
-            await using FileStream input = File.OpenRead(_path);
-            using Image image = await Image.LoadAsync(input, ct);
-            var encoder = new PngEncoder();
-            await image.SaveAsPngAsync(target, encoder, ct);
+            if (_transcoder is null)
+                throw new NotSupportedException($"Non-PNG input requires a PNG transcoder. Install ApngAsmWrapper.ImageSharp (or provide a custom IPngTranscoder). Input: '{_path}'.");
+
+            await _transcoder.TranscodeToPngAsync(_path, target, ct);
             return target;
         }
     }
@@ -319,6 +327,7 @@ public static partial class ApngGenerator
         private readonly List<Frame> _frames = new();
         private Options _options = new();
         private bool _transcodeNonPngInputs = true;
+        private IPngTranscoder? _pngTranscoder;
         private readonly string _apngasmExePath;
         private readonly string _outputPath;
 
@@ -345,6 +354,15 @@ public static partial class ApngGenerator
         }
 
         /// <summary>
+        /// Sets the PNG transcoder used when file-path inputs are not PNG.
+        /// </summary>
+        public Builder WithPngTranscoder(IPngTranscoder transcoder)
+        {
+            _pngTranscoder = transcoder;
+            return this;
+        }
+
+        /// <summary>
         /// Controls whether file-path inputs that are not PNG should be auto-transcoded to PNG.
         /// This affects subsequent <see cref="AddFrame(string,int?,int?)"/> calls.
         /// </summary>
@@ -356,7 +374,7 @@ public static partial class ApngGenerator
 
         public Builder AddFrame(string imagePath, int? delayNum = null, int? delayDen = null)
         {
-            _frames.Add(new Frame(new FileFrameSource(imagePath, _transcodeNonPngInputs)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
+            _frames.Add(new Frame(new FileFrameSource(imagePath, _transcodeNonPngInputs, _pngTranscoder)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
             return this;
         }
 
@@ -446,6 +464,11 @@ public static partial class ApngGenerator
 
         try
         {
+            // Ensure output directory exists.
+            string? outDir = Path.GetDirectoryName(req.OutputApngPath);
+            if (!string.IsNullOrWhiteSpace(outDir))
+                Directory.CreateDirectory(outDir);
+
             string[] materialized = new string[req.Frames.Count];
 
             if (!req.Options.MaterializeFramesInParallel || req.Frames.Count <= 1)
@@ -479,9 +502,11 @@ public static partial class ApngGenerator
             logger.Info(cmd);
 
             (int exit, string stdout, string stderr) = await runner.RunAsync(req.ApngasmExePath, args, tmpDir, ct);
-            return exit == 0
-                ? Result.Ok(cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized)
-                : Result.Fail($"apngasm failed (exit={exit}).", exit, cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized);
+            if (exit == 0)
+                return Result.Ok(cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized);
+
+            string hint = "If this keeps failing, set Options.KeepTempFiles=true to inspect materialized frames and delay files, and check Result.StandardError / Result.CommandLine.";
+            return Result.Fail($"apngasm failed (exit={exit}). {hint}", exit, cmd, stdout, stderr, req.Options.KeepTempFiles ? tmpDir : null, materialized);
         }
         catch (OperationCanceledException)
         {
@@ -512,7 +537,7 @@ public static partial class ApngGenerator
         if (num is not null || den is not null)
         {
             if (num is null || den is null || num <= 0 || den <= 0)
-                throw new ArgumentException("Per-frame delay requires positive numerator and denominator.");
+                throw new ArgumentException($"Frame[{index}] delay requires positive numerator and denominator.");
             File.WriteAllText(Path.Combine(tmpDir, $"{fileName}.txt"), $"delay={num}/{den}", Encoding.ASCII);
         }
 

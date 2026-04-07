@@ -7,6 +7,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ApngAsmWrapper\ApngAsmWrapper.csproj" />
+    <ProjectReference Include="..\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\ImageGeneratorTool2\tools\apngasm\apngasm64.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

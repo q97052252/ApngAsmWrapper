@@ -24,6 +24,30 @@ Reusable C# wrapper around the `apngasm` (APNG Assembler) command line tool.
 dotnet add package ApngAsmWrapper
 ```
 
+### 可选扩展：自动转码（ImageSharp addon）/ Optional addon: auto-transcode via ImageSharp
+
+如果你需要把 `jpg/bmp/gif/...` 自动转成 PNG（让 `.AddFrame(\"x.jpg\")` 也能直接用），请额外安装：
+
+If you want to automatically convert non-PNG inputs to PNG, install:
+
+```bash
+dotnet add package ApngAsmWrapper.ImageSharp
+```
+
+然后在构建请求时启用：
+
+```csharp
+using ApngAsmWrapper;
+using ApngAsmWrapper.ImageSharp;
+
+var req = new ApngGenerator.Builder(outputApngPath)
+  .WithOptions(new ApngGenerator.Options { TranscodeNonPngInputs = true })
+  .WithImageSharpTranscoding()
+  .AddFrame(@"C:\frames\a.jpg")
+  .AddFrame(@"C:\frames\b.png", 3, 1)
+  .Build();
+```
+
 ---
 
 ## apngasm64.exe（自动携带 & 可覆盖）/ Bundled apngasm64.exe (auto + override)
@@ -137,7 +161,7 @@ When `Success=false`, check:
 常见原因 / Common causes:
 
 - **找不到 apngasm64.exe**：确认输出目录存在 `apngasm64.exe`，或设置 `APNGASM_EXE`
-- **输入不是 PNG**：默认会自动把 `jpg/bmp/gif/...` 转成 PNG（可通过 `Options.TranscodeNonPngInputs=false` 关闭）
+- **输入不是 PNG**：如果你安装了 `ApngAsmWrapper.ImageSharp` 并启用 `.WithImageSharpTranscoding()`，则可自动转码；否则会提示你提供 `IPngTranscoder`
 
 ---
 

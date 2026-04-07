@@ -7,7 +7,7 @@
 
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>ApngAsmWrapper</PackageId>
-    <Version>0.1.4</Version>
+    <Version>0.1.5</Version>
     <Authors>q97052252</Authors>
     <Description>High-level, reusable C# wrapper for apngasm (APNG Assembler) CLI. Supports multi-frame inputs, per-frame delays, loops, and common apngasm options.</Description>
     <PackageTags>apng;apngasm;png;animation;wrapper</PackageTags>
@@ -17,7 +17,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) 2026 q97052252</Copyright>
-    <PackageReleaseNotes>0.1.4: Optional auto-transcode non-PNG inputs to PNG; expand unit tests for parallel materialization, keep-temp, and invalid inputs.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.1.5: Make ImageSharp optional via separate ApngAsmWrapper.ImageSharp package; add integration test hook and improve diagnostics.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
@@ -48,9 +48,7 @@
     <None Include="..\ImageGeneratorTool2\tools\apngasm\apngasm64.exe" Pack="true" PackagePath="tools\apngasm\" />
     <None Include="buildTransitive\ApngAsmWrapper.targets" Pack="true" PackagePath="buildTransitive\" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-  </ItemGroup>
+  <!-- Core package intentionally has no ImageSharp dependency. -->
 
 </Project>
 

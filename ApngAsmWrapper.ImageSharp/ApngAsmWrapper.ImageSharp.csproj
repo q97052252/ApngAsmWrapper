@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>ApngAsmWrapper.ImageSharp</PackageId>
+    <Version>0.1.5</Version>
+    <Authors>q97052252</Authors>
+    <Description>ImageSharp-based optional addon for ApngAsmWrapper. Provides automatic non-PNG to PNG transcoding for file inputs.</Description>
+    <PackageTags>apng;apngasm;png;animation;wrapper;imagesharp</PackageTags>
+    <RepositoryUrl>https://github.com/q97052252/ApngAsmWrapper.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/q97052252/ApngAsmWrapper</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2026 q97052252</Copyright>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApngAsmWrapper\ApngAsmWrapper.csproj" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
+

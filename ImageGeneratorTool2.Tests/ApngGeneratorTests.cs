@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ApngAsmWrapper;
+using ApngAsmWrapper.ImageSharp;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ImageGeneratorTool2.Tests;
@@ -216,7 +217,7 @@ public sealed class ApngGeneratorTests
                 bmp.Save(jpg, System.Drawing.Imaging.ImageFormat.Jpeg);
             }
 
-            var src = new ApngGenerator.FileFrameSource(jpg, transcodeNonPng: true);
+            var src = new ApngGenerator.FileFrameSource(jpg, transcodeNonPng: true, transcoder: new ImageSharpPngTranscoder());
             string outPng = await src.MaterializePngAsync(tempRoot, "frame00", CancellationToken.None);
 
             Assert.IsTrue(File.Exists(outPng));
@@ -227,6 +228,101 @@ public sealed class ApngGeneratorTests
         {
             try { Directory.Delete(tempRoot, recursive: true); } catch { }
         }
+    }
+
+    [TestMethod]
+    public async Task Integration_GeneratesApngWithThreeFrames_WhenEnabled()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("RUN_APNG_INTEGRATION"), "1", StringComparison.OrdinalIgnoreCase))
+            Assert.Inconclusive("Set RUN_APNG_INTEGRATION=1 to enable integration test.");
+
+        string exe = Path.Combine(AppContext.BaseDirectory, "apngasm64.exe");
+        if (!File.Exists(exe))
+            Assert.Inconclusive("apngasm64.exe not found in test output.");
+
+        string tempRoot = Path.Combine(Path.GetTempPath(), "ApngGeneratorIntegration_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            string f0 = Path.Combine(tempRoot, "f0.png");
+            string f1 = Path.Combine(tempRoot, "f1.jpg");
+            string f2 = Path.Combine(tempRoot, "f2.png");
+
+            // Create PNG/JPG/PNG to validate auto-transcode path via ImageSharp addon.
+            using (var bmp = new System.Drawing.Bitmap(16, 16))
+            {
+                using var g = System.Drawing.Graphics.FromImage(bmp);
+                g.Clear(System.Drawing.Color.Red);
+                bmp.Save(f0, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            using (var bmp = new System.Drawing.Bitmap(16, 16))
+            {
+                using var g = System.Drawing.Graphics.FromImage(bmp);
+                g.Clear(System.Drawing.Color.Green);
+                bmp.Save(f1, System.Drawing.Imaging.ImageFormat.Jpeg);
+            }
+            using (var bmp = new System.Drawing.Bitmap(16, 16))
+            {
+                using var g = System.Drawing.Graphics.FromImage(bmp);
+                g.Clear(System.Drawing.Color.Blue);
+                bmp.Save(f2, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            string outPath = Path.Combine(tempRoot, "out.png");
+
+            var options = new ApngGenerator.Options
+            {
+                SkipFirstFrame = true,
+                LoopCount = 1,
+                KeepTempFiles = false,
+                TranscodeNonPngInputs = true,
+            };
+
+            var req = new ApngGenerator.Builder(exe, outPath)
+                .WithOptions(options)
+                .WithImageSharpTranscoding()
+                .AddFrame(f0)
+                .AddFrame(f1, 3, 1)
+                .AddFrame(f2, 1, 1)
+                .Build();
+
+            ApngGenerator.Result result = await ApngGenerator.GenerateAsync(req);
+            Assert.IsTrue(result.Success, result.ErrorMessage + "\n" + result.StandardError);
+            Assert.IsTrue(File.Exists(outPath));
+
+            int frames = ReadApngFrameCount(outPath);
+            Assert.AreEqual(3, frames, "Expected 3 frames in output APNG.");
+        }
+        finally
+        {
+            try { Directory.Delete(tempRoot, recursive: true); } catch { }
+        }
+    }
+
+    private static int ReadApngFrameCount(string pngPath)
+    {
+        // Reads acTL chunk (Animation Control) and returns num_frames. If absent, returns 1.
+        // PNG signature 8 bytes, then chunks: length(4) type(4) data(length) crc(4)
+        byte[] data = File.ReadAllBytes(pngPath);
+        int i = 8;
+        while (i + 12 <= data.Length)
+        {
+            int len = ReadInt32BE(data, i);
+            string type = System.Text.Encoding.ASCII.GetString(data, i + 4, 4);
+            int dataStart = i + 8;
+            if (dataStart + len + 4 > data.Length)
+                break;
+            if (type == "acTL" && len >= 8)
+                return ReadInt32BE(data, dataStart);
+            i = dataStart + len + 4;
+        }
+        return 1;
+    }
+
+    private static int ReadInt32BE(byte[] b, int offset)
+    {
+        return (b[offset] << 24) | (b[offset + 1] << 16) | (b[offset + 2] << 8) | b[offset + 3];
     }
 
     private sealed class SlowFrameSource : ApngGenerator.IApngFrameSource
