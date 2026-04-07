@@ -84,6 +84,27 @@ public sealed class ApngGeneratorTests
     }
 
     [TestMethod]
+    public void DelayMilliseconds_ConvertsToExpectedFraction()
+    {
+        (int n1, int d1) = ApngGenerator.ToApngDelayFractionFromMilliseconds(3000);
+        Assert.AreEqual(3, n1);
+        Assert.AreEqual(1, d1);
+
+        (int n2, int d2) = ApngGenerator.ToApngDelayFractionFromMilliseconds(1500);
+        Assert.AreEqual(3, n2);
+        Assert.AreEqual(2, d2);
+    }
+
+    [TestMethod]
+    public void DelayMilliseconds_ClampsTo16Bit()
+    {
+        // Very large delay should still produce a 16-bit safe fraction.
+        (int n, int d) = ApngGenerator.ToApngDelayFractionFromMilliseconds(int.MaxValue);
+        Assert.IsTrue(n >= 1 && n <= 65535);
+        Assert.IsTrue(d >= 1 && d <= 65535);
+    }
+
+    [TestMethod]
     public async Task GenerateAsync_KeepTempFiles_ExposesTempDirectory()
     {
         string tempRoot = Path.Combine(Path.GetTempPath(), "ApngGeneratorTests_" + Guid.NewGuid().ToString("N"));

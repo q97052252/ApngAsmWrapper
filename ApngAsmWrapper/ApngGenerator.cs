@@ -379,6 +379,15 @@ public static partial class ApngGenerator
         }
 
         /// <summary>
+        /// Adds a frame with delay in milliseconds.
+        /// </summary>
+        public Builder AddFrame(string imagePath, int delayMs)
+        {
+            (int num, int den) = ToApngDelayFractionFromMilliseconds(delayMs);
+            return AddFrame(imagePath, num, den);
+        }
+
+        /// <summary>
         /// Adds a frame with a <see cref="TimeSpan"/> delay (converted to NUM/DEN seconds).
         /// </summary>
         public Builder AddFrame(string imagePath, TimeSpan delay)
@@ -407,10 +416,29 @@ public static partial class ApngGenerator
             return this;
         }
 
+        /// <summary>
+        /// Adds multiple frames with per-frame delays in milliseconds.
+        /// </summary>
+        public Builder AddFrames(IEnumerable<(string Path, int DelayMs)> frames)
+        {
+            foreach (var f in frames)
+                AddFrame(f.Path, f.DelayMs);
+            return this;
+        }
+
         public Builder AddFrame(Stream pngStream, int? delayNum = null, int? delayDen = null)
         {
             _frames.Add(new Frame(new StreamFrameSource(pngStream)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
             return this;
+        }
+
+        /// <summary>
+        /// Adds a frame (stream) with delay in milliseconds.
+        /// </summary>
+        public Builder AddFrame(Stream pngStream, int delayMs)
+        {
+            (int num, int den) = ToApngDelayFractionFromMilliseconds(delayMs);
+            return AddFrame(pngStream, num, den);
         }
 
         /// <summary>
@@ -450,6 +478,43 @@ public static partial class ApngGenerator
 
         if (num > int.MaxValue || den > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(delay), "Delay is too large.");
+
+        return ((int)num, (int)den);
+    }
+
+    public static (int Numerator, int Denominator) ToApngDelayFractionFromMilliseconds(int delayMs)
+    {
+        // APNG delay is stored as two unsigned 16-bit integers (NUM/DEN seconds).
+        // Keep values within 1..65535 to avoid encoder/decoder issues.
+        if (delayMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(delayMs), "Delay must be positive milliseconds.");
+
+        long num = delayMs;
+        long den = 1000;
+        long g = Gcd(num, den);
+        num /= g;
+        den /= g;
+
+        const int Max = 65535;
+        if (num <= Max && den <= Max)
+            return ((int)num, (int)den);
+
+        long scaleA = (num + Max - 1) / Max;
+        long scaleB = (den + Max - 1) / Max;
+        long scale = Math.Max(scaleA, scaleB);
+        if (scale < 1) scale = 1;
+
+        num = (num + scale - 1) / scale;
+        den = (den + scale - 1) / scale;
+
+        if (num < 1) num = 1;
+        if (den < 1) den = 1;
+        if (num > Max) num = Max;
+        if (den > Max) den = Max;
+
+        g = Gcd(num, den);
+        num /= g;
+        den /= g;
 
         return ((int)num, (int)den);
     }

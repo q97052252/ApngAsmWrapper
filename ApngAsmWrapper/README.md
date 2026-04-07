@@ -158,6 +158,19 @@ var req = new ApngGenerator.Builder(outputApngPath)
   .Build();
 ```
 
+更简单：你也可以直接传 **毫秒**（库内部自动换算 NUM/DEN，并做 16-bit 限制保护）：
+
+Even simpler: pass **milliseconds** directly:
+
+```csharp
+var req = new ApngGenerator.Builder(outputApngPath)
+  .WithOptions(options)
+  .AddFrame(@"C:\frames\frame0.png")
+  .AddFrame(@"C:\frames\frame1.png", delayMs: 3000)
+  .AddFrame(@"C:\frames\frame2.png", delayMs: 1000)
+  .Build();
+```
+
 ---
 
 ## 错误诊断 / Troubleshooting

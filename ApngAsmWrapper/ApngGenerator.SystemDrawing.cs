@@ -39,6 +39,15 @@ public static partial class ApngGenerator
         }
 
         /// <summary>
+        /// Adds a frame from an <see cref="Image"/> with delay in milliseconds.
+        /// </summary>
+        public Builder AddFrame(Image image, int delayMs)
+        {
+            (int num, int den) = ApngGenerator.ToApngDelayFractionFromMilliseconds(delayMs);
+            return AddFrame(image, num, den);
+        }
+
+        /// <summary>
         /// Adds a frame from an <see cref="Image"/> with a <see cref="System.TimeSpan"/> delay.
         /// </summary>
         public Builder AddFrame(Image image, System.TimeSpan delay)
