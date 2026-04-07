@@ -384,8 +384,17 @@ public static partial class ApngGenerator
     /// </summary>
     public sealed class NullLogger : IApngLogger
     {
+        /// <summary>
+        /// 写入信息级日志（本实现为空操作，不会输出）。/ Writes an informational log (no-op in this implementation).
+        /// </summary>
         public void Info(string message) { }
+        /// <summary>
+        /// 写入警告级日志（本实现为空操作，不会输出）。/ Writes a warning log (no-op in this implementation).
+        /// </summary>
         public void Warn(string message) { }
+        /// <summary>
+        /// 写入错误级日志（本实现为空操作，不会输出）。/ Writes an error log (no-op in this implementation).
+        /// </summary>
         public void Error(string message) { }
     }
 
@@ -431,6 +440,24 @@ public static partial class ApngGenerator
     /// </summary>
     public sealed class DefaultProcessRunner : IApngasmProcessRunner
     {
+        /// <summary>
+        /// 启动 apngasm 进程并异步读取 stdout/stderr，直到进程退出或取消。
+        /// 该实现会：
+        /// - 关闭 Shell 执行（<c>UseShellExecute=false</c>）
+        /// - 重定向 stdout/stderr 以便返回诊断信息
+        /// - 使用 <paramref name="workingDirectory"/> 作为进程工作目录（通常是临时目录）
+        ///
+        /// Starts the apngasm process and reads stdout/stderr asynchronously until the process exits or cancellation is requested.
+        /// This implementation:
+        /// - Disables shell execution (<c>UseShellExecute=false</c>)
+        /// - Redirects stdout/stderr for diagnostics
+        /// - Uses <paramref name="workingDirectory"/> as the process working directory (typically the temp directory)
+        /// </summary>
+        /// <param name="exePath">apngasm 可执行文件路径。/ apngasm executable path.</param>
+        /// <param name="arguments">apngasm 参数（不含 exe）。/ apngasm arguments (excluding exe).</param>
+        /// <param name="workingDirectory">工作目录。/ Working directory.</param>
+        /// <param name="cancellationToken">取消令牌。/ Cancellation token.</param>
+        /// <returns>退出码 + stdout + stderr。/ Exit code + stdout + stderr.</returns>
         public async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
             string exePath,
             string arguments,
@@ -517,10 +544,31 @@ public static partial class ApngGenerator
     /// </summary>
     public sealed class FileFrameSource : IApngFrameSource
     {
+        /// <summary>
+        /// 原始输入路径（可能是 PNG，也可能是其他格式）。/ Original input path (may be PNG or other formats).
+        /// </summary>
         private readonly string _path;
+        /// <summary>
+        /// 是否允许对非 PNG 的文件路径输入进行转码。/ Whether transcoding non-PNG file inputs is allowed.
+        /// </summary>
         private readonly bool _transcodeNonPng;
+        /// <summary>
+        /// 非 PNG 转 PNG 的转码器（可空）。/ Transcoder used for non-PNG inputs (nullable).
+        /// </summary>
         private readonly IPngTranscoder? _transcoder;
 
+        /// <summary>
+        /// 从文件路径创建帧来源。
+        /// - 当输入是 PNG：会复制/复用为临时帧文件
+        /// - 当输入非 PNG：如果允许转码且提供 <paramref name="transcoder"/>，则转码为 PNG；否则抛出 <see cref="NotSupportedException"/>
+        ///
+        /// Creates a frame source from a file path.
+        /// - For PNG inputs: copies/reuses as the temp frame file
+        /// - For non-PNG inputs: transcodes to PNG if allowed and <paramref name="transcoder"/> is provided; otherwise throws <see cref="NotSupportedException"/>
+        /// </summary>
+        /// <param name="path">输入图片路径。/ Input image path.</param>
+        /// <param name="transcodeNonPng">是否允许非 PNG 自动转码。/ Allow auto-transcoding for non-PNG inputs.</param>
+        /// <param name="transcoder">转码器（可空）。/ Transcoder (nullable).</param>
         public FileFrameSource(string path, bool transcodeNonPng = true, IPngTranscoder? transcoder = null)
         {
             _path = path;
@@ -528,6 +576,19 @@ public static partial class ApngGenerator
             _transcoder = transcoder;
         }
 
+        /// <summary>
+        /// 将输入文件落盘成 PNG 并返回落盘路径。
+        /// - PNG：直接复制（若目标与源相同则跳过复制）
+        /// - 非 PNG：按配置进行转码
+        ///
+        /// Materializes the input file into a PNG on disk and returns the resulting path.
+        /// - PNG: copied directly (skips copy if source equals target)
+        /// - Non-PNG: transcoded based on configuration
+        /// </summary>
+        /// <param name="directory">输出目录（通常为临时目录）。/ Output directory (usually temp).</param>
+        /// <param name="fileNameWithoutExt">目标文件名（不含扩展名）。/ Target filename without extension.</param>
+        /// <param name="ct">取消令牌。/ Cancellation token.</param>
+        /// <returns>落盘后的 PNG 路径。/ Path to the materialized PNG.</returns>
         public async Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
@@ -578,6 +639,9 @@ public static partial class ApngGenerator
     /// </summary>
     public sealed class StreamFrameSource : IApngFrameSource
     {
+        /// <summary>
+        /// 输入数据流（应为 PNG 字节）。/ Input stream (should contain PNG bytes).
+        /// </summary>
         private readonly Stream _stream;
         /// <summary>
         /// 使用一个包含 PNG 数据的 <see cref="Stream"/> 构造帧来源。
@@ -591,6 +655,17 @@ public static partial class ApngGenerator
         /// </param>
         public StreamFrameSource(Stream stream) => _stream = stream;
 
+        /// <summary>
+        /// 将流内容写入到目标 <c>.png</c> 文件并返回路径。
+        /// 注意：不会校验流内容是否为 PNG；若流可 Seek，会在写入前重置到 0。
+        ///
+        /// Writes the stream to the target <c>.png</c> file and returns the path.
+        /// Note: does not validate PNG format; if the stream is seekable, resets position to 0 before copying.
+        /// </summary>
+        /// <param name="directory">输出目录（通常为临时目录）。/ Output directory (usually temp).</param>
+        /// <param name="fileNameWithoutExt">目标文件名（不含扩展名）。/ Target filename without extension.</param>
+        /// <param name="ct">取消令牌。/ Cancellation token.</param>
+        /// <returns>落盘后的 PNG 路径。/ Path to the materialized PNG.</returns>
         public async Task<string> MaterializePngAsync(string directory, string fileNameWithoutExt, CancellationToken ct)
         {
             string target = Path.Combine(directory, fileNameWithoutExt + ".png");
@@ -608,11 +683,30 @@ public static partial class ApngGenerator
     /// </summary>
     public sealed partial class Builder
     {
+        /// <summary>
+        /// 已添加的帧列表（按添加顺序生成）。/ Frames added so far (generated in the same order).
+        /// </summary>
         private readonly List<Frame> _frames = new();
+        /// <summary>
+        /// 当前 Builder 的全局选项快照（可被 <see cref="WithOptions"/> 替换）。/ Current global options snapshot (replaced by <see cref="WithOptions"/>).
+        /// </summary>
         private Options _options = new();
+        /// <summary>
+        /// 是否对非 PNG 的文件路径输入启用转码（builder 内部状态，通常与 <see cref="Options.TranscodeNonPngInputs"/> 同步）。
+        /// / Whether transcoding is enabled for non-PNG file-path inputs (builder internal state, usually synced with <see cref="Options.TranscodeNonPngInputs"/>).
+        /// </summary>
         private bool _transcodeNonPngInputs = true;
+        /// <summary>
+        /// PNG 转码器（可选）。/ PNG transcoder (optional).
+        /// </summary>
         private IPngTranscoder? _pngTranscoder;
+        /// <summary>
+        /// apngasm 可执行文件路径。/ apngasm executable path.
+        /// </summary>
         private readonly string _apngasmExePath;
+        /// <summary>
+        /// 输出 APNG 文件路径。/ Output APNG file path.
+        /// </summary>
         private readonly string _outputPath;
 
         /// <summary>
