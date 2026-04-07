@@ -1,7 +1,12 @@
 name: Publish NuGet
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer version (e.g. 0.1.6). Used when manually running workflow."
+        required: false
+        type: string
   push:
     tags:
       - "v*.*.*"
@@ -27,26 +32,39 @@ jobs:
       - name: Restore
         run: dotnet restore .\ImageGeneratorTool2.slnx
 
+      - name: Verify tag is on main
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $tagCommit = (git rev-list -n 1 "${{ github.ref_name }}").Trim()
+          git merge-base --is-ancestor $tagCommit origin/main
+
+      - name: Test (Release, integration enabled)
+        shell: pwsh
+        run: dotnet test .\ImageGeneratorTool2.Tests\ImageGeneratorTool2.Tests.csproj -c Release --no-build -- RunConfiguration.EnvironmentVariables.RUN_APNG_INTEGRATION=1
+
       - name: Pack (Release)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          if ($tag -match '^v(?<ver>\d+\.\d+\.\d+)$') {
-            $ver = $Matches['ver']
-            dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore /p:Version=$ver
-            dotnet pack .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj -c Release --no-restore /p:Version=$ver
-          } else {
-            dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore
-            dotnet pack .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj -c Release --no-restore
-          }
+          $inputVer = "${{ inputs.version }}"
+          $ver = ""
+          if ($tag -match '^v(?<v>\d+\.\d+\.\d+)$') { $ver = $Matches['v'] }
+          elseif ($inputVer -match '^\d+\.\d+\.\d+$') { $ver = $inputVer }
+          else { throw "No version provided. Use a tag vX.Y.Z or workflow_dispatch input 'version'." }
+
+          "PACKAGE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          dotnet pack .\ApngAsmWrapper\ApngAsmWrapper.csproj -c Release --no-restore /p:Version=$ver
+          dotnet pack .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj -c Release --no-restore /p:Version=$ver
 
       - name: Push to NuGet
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           if (-not $env:NUGET_API_KEY) { throw "Missing GitHub secret: NUGET_API_KEY" }
-          dotnet nuget push ".\ApngAsmWrapper\bin\Release\ApngAsmWrapper.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
-          dotnet nuget push ".\ApngAsmWrapper.ImageSharp\bin\Release\ApngAsmWrapper.ImageSharp.*.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+          dotnet nuget push ".\ApngAsmWrapper\bin\Release\ApngAsmWrapper.$env:PACKAGE_VERSION.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+          dotnet nuget push ".\ApngAsmWrapper.ImageSharp\bin\Release\ApngAsmWrapper.ImageSharp.$env:PACKAGE_VERSION.nupkg" --api-key "$env:NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
 
       - name: Generate changelog (git-cliff)
         uses: orhun/git-cliff-action@v4

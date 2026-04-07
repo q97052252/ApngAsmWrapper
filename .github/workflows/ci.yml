@@ -32,3 +32,8 @@ jobs:
       - name: Test (Release)
         run: dotnet test .\ImageGeneratorTool2.Tests\ImageGeneratorTool2.Tests.csproj -c Release --no-build -- RunConfiguration.EnvironmentVariables.RUN_APNG_INTEGRATION=1
 
+      - name: Vulnerability audit
+        run: |
+          dotnet list .\ApngAsmWrapper\ApngAsmWrapper.csproj package --vulnerable
+          dotnet list .\ApngAsmWrapper.ImageSharp\ApngAsmWrapper.ImageSharp.csproj package --vulnerable
+

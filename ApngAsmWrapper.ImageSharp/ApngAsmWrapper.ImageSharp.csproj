@@ -7,7 +7,7 @@
 
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>ApngAsmWrapper.ImageSharp</PackageId>
-    <Version>0.1.5</Version>
+    <Version>0.0.0</Version>
     <Authors>q97052252</Authors>
     <Description>ImageSharp-based optional addon for ApngAsmWrapper. Provides automatic non-PNG to PNG transcoding for file inputs.</Description>
     <PackageTags>apng;apngasm;png;animation;wrapper;imagesharp</PackageTags>

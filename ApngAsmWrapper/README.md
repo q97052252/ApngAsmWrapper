@@ -145,6 +145,19 @@ var req = new ApngGenerator.Builder(@"C:\out\out.png")
 var result = await ApngGenerator.GenerateAsync(req);
 ```
 
+你也可以用 `TimeSpan` 传延迟（内部会自动转换为 NUM/DEN 秒）：
+
+You can also provide delays via `TimeSpan`:
+
+```csharp
+var req = new ApngGenerator.Builder(outputApngPath)
+  .WithOptions(options)
+  .AddFrame(@"C:\frames\frame0.png")
+  .AddFrame(@"C:\frames\frame1.png", TimeSpan.FromSeconds(3))
+  .AddFrame(@"C:\frames\frame2.png", TimeSpan.FromSeconds(1))
+  .Build();
+```
+
 ---
 
 ## 错误诊断 / Troubleshooting

@@ -1,3 +1,5 @@
+// This file is only compiled/used on Windows.
+#if WINDOWS
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -35,5 +37,15 @@ public static partial class ApngGenerator
             _frames.Add(new Frame(new ImageFrameSource(image)) { DelayNumerator = delayNum, DelayDenominator = delayDen });
             return this;
         }
+
+        /// <summary>
+        /// Adds a frame from an <see cref="Image"/> with a <see cref="System.TimeSpan"/> delay.
+        /// </summary>
+        public Builder AddFrame(Image image, System.TimeSpan delay)
+        {
+            (int num, int den) = ApngGenerator.ToFractionSeconds(delay);
+            return AddFrame(image, num, den);
+        }
     }
 }
+#endif

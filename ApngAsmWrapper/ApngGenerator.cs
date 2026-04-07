@@ -379,6 +379,15 @@ public static partial class ApngGenerator
         }
 
         /// <summary>
+        /// Adds a frame with a <see cref="TimeSpan"/> delay (converted to NUM/DEN seconds).
+        /// </summary>
+        public Builder AddFrame(string imagePath, TimeSpan delay)
+        {
+            (int num, int den) = ToFractionSeconds(delay);
+            return AddFrame(imagePath, num, den);
+        }
+
+        /// <summary>
         /// Adds multiple frames from file paths.
         /// </summary>
         public Builder AddFrames(IEnumerable<string> imagePaths)
@@ -405,6 +414,15 @@ public static partial class ApngGenerator
         }
 
         /// <summary>
+        /// Adds a frame (stream) with a <see cref="TimeSpan"/> delay.
+        /// </summary>
+        public Builder AddFrame(Stream pngStream, TimeSpan delay)
+        {
+            (int num, int den) = ToFractionSeconds(delay);
+            return AddFrame(pngStream, num, den);
+        }
+
+        /// <summary>
         /// Adds multiple frames from streams.
         /// </summary>
         public Builder AddFrames(IEnumerable<Stream> pngStreams)
@@ -415,6 +433,36 @@ public static partial class ApngGenerator
         }
 
         public Request Build() => new(_apngasmExePath, _outputPath, _frames.ToArray(), _options);
+    }
+
+    internal static (int Numerator, int Denominator) ToFractionSeconds(TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(delay), "Delay must be positive.");
+
+        long ms = (long)Math.Round(delay.TotalMilliseconds);
+        if (ms <= 0) ms = 1;
+        long num = ms;
+        long den = 1000;
+        long g = Gcd(num, den);
+        num /= g;
+        den /= g;
+
+        if (num > int.MaxValue || den > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(delay), "Delay is too large.");
+
+        return ((int)num, (int)den);
+    }
+
+    private static long Gcd(long a, long b)
+    {
+        while (b != 0)
+        {
+            long t = a % b;
+            a = b;
+            b = t;
+        }
+        return Math.Abs(a);
     }
 
     /// <summary>
