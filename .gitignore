@@ -1,0 +1,13 @@
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+*.nupkg
+*.snupkg
+
+# OS / tooling
+Thumbs.db
+Desktop.ini
+

@@ -1,0 +1,13 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    When a consuming project references the NuGet package, copy the bundled apngasm64.exe
+    into the consumer's build output folder, so ApngGenerator can discover it via AppContext.BaseDirectory.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\tools\apngasm\apngasm64.exe"
+          Link="apngasm64.exe"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+</Project>
+

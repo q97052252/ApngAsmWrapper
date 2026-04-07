@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ImageGeneratorTool2/ImageGeneratorTool2.csproj" />
+  <Project Path="ApngAsmWrapper/ApngAsmWrapper.csproj" />
+</Solution>
