@@ -7,7 +7,7 @@
 
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>ApngAsmWrapper</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Authors>q97052252</Authors>
     <Description>High-level, reusable C# wrapper for apngasm (APNG Assembler) CLI. Supports multi-frame inputs, per-frame delays, loops, and common apngasm options.</Description>
     <PackageTags>apng;apngasm;png;animation;wrapper</PackageTags>
@@ -17,7 +17,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) 2026 q97052252</Copyright>
-    <PackageReleaseNotes>0.1.1: Fix multi-frame command line to pass all frames to apngasm; improve apngasm exe resolution; bundle apngasm64.exe via buildTransitive.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.1.2: Documentation update (CN/EN) + repository hygiene (remove temporary commit message file).</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
